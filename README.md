@@ -39,22 +39,17 @@ On first run `gesturemouse` writes a default config to
 
 ### Grant Accessibility permission
 
-macOS will block the event tap until you allow it. Open
-**System Settings → Privacy & Security → Accessibility**, click `+`, and add
-the binary at:
+On first run the binary asks for Accessibility access. Open
+**System Settings → Privacy & Security → Accessibility** and toggle the
+switch for `gesturemouse`. The daemon polls in the background and picks the
+permission up automatically — no need to restart the service.
 
-```
-$(brew --prefix)/bin/gesturemouse
-```
-
-(On Apple Silicon that resolves to `/opt/homebrew/bin/gesturemouse`, on Intel
-`/usr/local/bin/gesturemouse`.)
-
-Restart the service after granting:
-
-```bash
-brew services restart gesturemouse
-```
+The binary embeds an `Info.plist` (bundle id
+`com.supermar1010.gesturemouse`, `LSUIElement=true`) and is ad-hoc signed,
+so System Settings lists it by name instead of by raw path. Because ad-hoc
+signatures use a content-hash designated requirement, you'll still need to
+re-toggle the switch after a `brew upgrade` that produces a new binary
+hash; polling makes that a one-toggle action without a service restart.
 
 ### Disable conflicting mappings
 

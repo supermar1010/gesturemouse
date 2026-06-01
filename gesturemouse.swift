@@ -284,17 +284,21 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
 
 // MARK: - Accessibility prompt
 
-func ensureAccessibility() {
+// macOS caches the result of `AXIsProcessTrusted` per process, so once it
+// has returned false it keeps returning false even after the user toggles
+// the switch. We therefore use `CGEvent.tapCreate` itself as the probe in
+// the bootstrap loop below — it tests the real capability we need and
+// picks up newly-granted permission in the same process when the cache
+// lets us. As a fallback for cache-stuck processes, the loop exits after
+// 60s so `brew services keep_alive` (or a manual re-run) starts a fresh
+// process whose trust state is re-read from TCC.
+func promptForAccessibility() {
+    if AXIsProcessTrusted() { return }
     let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-    let opts = [key: true] as CFDictionary
-    let trusted = AXIsProcessTrustedWithOptions(opts)
-    if !trusted {
-        FileHandle.standardError.write(Data("gesturemouse: Accessibility not granted yet. macOS opened System Settings; toggle the switch for 'gesturemouse', then re-run.\n".utf8))
-        exit(2)
-    }
+    _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
 }
 
-ensureAccessibility()
+promptForAccessibility()
 compileScripts()
 
 // MARK: - Bootstrap
@@ -310,17 +314,37 @@ let mask: CGEventMask =
     (1 << CGEventType.rightMouseDragged.rawValue) |
     (1 << CGEventType.scrollWheel.rawValue)
 
-guard let tap = CGEvent.tapCreate(
-    tap: .cgSessionEventTap,
-    place: .headInsertEventTap,
-    options: .defaultTap,
-    eventsOfInterest: mask,
-    callback: callback,
-    userInfo: nil
-) else {
-    FileHandle.standardError.write(Data("gesturemouse: event tap create failed — grant Accessibility permission in System Settings → Privacy & Security → Accessibility\n".utf8))
-    exit(1)
+func acquireTap() -> CFMachPort {
+    var notified = false
+    var waited = 0
+    while true {
+        if let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: callback,
+            userInfo: nil
+        ) {
+            if notified {
+                FileHandle.standardError.write(Data("gesturemouse: Accessibility granted, continuing.\n".utf8))
+            }
+            return tap
+        }
+        if !notified {
+            FileHandle.standardError.write(Data("gesturemouse: waiting for Accessibility permission. Toggle gesturemouse in System Settings → Privacy & Security → Accessibility.\n".utf8))
+            notified = true
+        }
+        Thread.sleep(forTimeInterval: 2.0)
+        waited += 2
+        if waited >= 60 {
+            FileHandle.standardError.write(Data("gesturemouse: tap still unavailable after 60s — exiting so brew services / launchd restarts the process with a fresh trust check.\n".utf8))
+            exit(75)  // EX_TEMPFAIL — keep_alive will restart
+        }
+    }
 }
+
+let tap = acquireTap()
 sharedTap = tap
 
 let runLoopSrc = CFMachPortCreateRunLoopSource(nil, tap, 0)
