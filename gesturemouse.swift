@@ -164,12 +164,14 @@ func sendAction(dir: String) {
 // MARK: - Gesture state
 
 var gestureActive = false
+var gestureFired = false
 var accDx: CGFloat = 0
 var accDy: CGFloat = 0
 var anchorPos: CGPoint = .zero
 
 func beginGesture() {
     gestureActive = true
+    gestureFired = false
     accDx = 0
     accDy = 0
     anchorPos = CGEvent(source: nil)?.location ?? .zero
@@ -185,12 +187,8 @@ func endGesture() {
     gestureActive = false
 }
 
-func classify(dx: CGFloat, dy: CGFloat) -> String {
-    let ax = abs(dx), ay = abs(dy)
-    if ax < CGFloat(config.moveThreshold) && ay < CGFloat(config.moveThreshold) {
-        return "click"
-    }
-    if ax > ay {
+func directionOf(dx: CGFloat, dy: CGFloat) -> String {
+    if abs(dx) > abs(dy) {
         return dx < 0 ? "left" : "right"
     }
     return dy < 0 ? "up" : "down"
@@ -225,13 +223,28 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
 
     // While the gesture button is held, accumulate movement deltas and swallow
     // the move events so the cursor stays frozen even if our decouple call
-    // didn't take effect (belt + suspenders).
+    // didn't take effect (belt + suspenders). Fire the direction action as soon
+    // as the threshold is crossed (Logitech Options+ behavior), then ignore
+    // further motion until the button is released.
     if gestureActive &&
         (type == .otherMouseDragged || type == .mouseMoved ||
          type == .leftMouseDragged  || type == .rightMouseDragged) {
+        // After the action has fired, release the cursor and pass motion through
+        // so the user can keep moving the mouse freely while still holding the
+        // gesture button. This matches Logitech Options+ behavior.
+        if gestureFired {
+            return Unmanaged.passUnretained(event)
+        }
         accDx += CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
         accDy += CGFloat(event.getIntegerValueField(.mouseEventDeltaY))
         CGWarpMouseCursorPosition(anchorPos)
+        let t = CGFloat(config.moveThreshold)
+        if abs(accDx) >= t || abs(accDy) >= t {
+            let dir = directionOf(dx: accDx, dy: accDy)
+            gestureFired = true
+            CGAssociateMouseAndMouseCursorPosition(1)
+            if config.actions[dir] != nil { sendAction(dir: dir) }
+        }
         return nil
     }
 
@@ -244,10 +257,9 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
             return nil
         }
         if type == .otherMouseUp && gestureActive {
-            let dx = accDx, dy = accDy
+            let fired = gestureFired
             endGesture()
-            let dir = classify(dx: dx, dy: dy)
-            if config.actions[dir] != nil { sendAction(dir: dir) }
+            if !fired, config.actions["click"] != nil { sendAction(dir: "click") }
             return nil
         }
     }
