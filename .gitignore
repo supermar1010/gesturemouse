@@ -1,0 +1,6 @@
+gesturemouse
+debug-buttons
+*.o
+*.dSYM/
+.build/
+.DS_Store

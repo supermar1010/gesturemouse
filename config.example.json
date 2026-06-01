@@ -1,0 +1,14 @@
+{
+  "button": 5,
+  "moveThreshold": 25,
+  "actions": {
+    "click": { "key": "up",    "mods": ["ctrl"] },
+    "left":  { "key": "left",  "mods": ["ctrl"] },
+    "right": { "key": "right", "mods": ["ctrl"] },
+    "up":    { "key": "4",     "mods": ["cmd", "shift"] },
+    "down":  { "key": "down",  "mods": ["ctrl"] }
+  },
+  "scrollInvert": {
+    "verticalMouseOnly": true
+  }
+}
