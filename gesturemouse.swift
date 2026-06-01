@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import Carbon.HIToolbox
 import ApplicationServices
+import AppKit
 
 // MARK: - Config
 
@@ -111,27 +112,52 @@ let modKeyCodes: [String: CGKeyCode] = [
 
 let sendQueue = DispatchQueue(label: "gesturemouse.send")
 
-func sendKey(_ spec: ActionSpec) {
-    guard let code = keyMap[spec.key.lowercased()] else {
-        FileHandle.standardError.write(Data("gesturemouse: unknown key '\(spec.key)'\n".utf8))
+let osaModName: [String: String] = [
+    "cmd":   "command down",
+    "shift": "shift down",
+    "ctrl":  "control down",
+    "alt":   "option down",
+    "opt":   "option down",
+]
+
+func scriptSource(for spec: ActionSpec) -> String? {
+    guard let code = keyMap[spec.key.lowercased()] else { return nil }
+    let modParts = spec.mods.compactMap { osaModName[$0.lowercased()] }
+    let usingClause = modParts.isEmpty ? "" : " using {\(modParts.joined(separator: ", "))}"
+    return "tell application \"System Events\" to key code \(code)\(usingClause)"
+}
+
+// Pre-compile NSAppleScript per direction so each gesture only pays the
+// AppleEvent round-trip (~5-10 ms) rather than osascript subprocess spawn
+// + compile (~50-100 ms). Routing through System Events is still needed —
+// raw CGEventPost loses the Ctrl modifier for symbolic hotkeys like
+// Mission Control and Spaces switching.
+var compiledScripts: [String: NSAppleScript] = [:]
+
+func compileScripts() {
+    for (dir, spec) in config.actions {
+        guard let source = scriptSource(for: spec) else { continue }
+        let script = NSAppleScript(source: source)
+        var err: NSDictionary? = nil
+        if script?.compileAndReturnError(&err) == true {
+            compiledScripts[dir] = script
+        } else {
+            FileHandle.standardError.write(Data("gesturemouse: compile failed for '\(dir)': \(err ?? [:])\n".utf8))
+        }
+    }
+}
+
+func sendAction(dir: String) {
+    guard let script = compiledScripts[dir] else {
+        FileHandle.standardError.write(Data("gesturemouse: no compiled script for '\(dir)'\n".utf8))
         return
     }
-    FileHandle.standardError.write(Data("gesturemouse: sendKey key=\(spec.key) mods=\(spec.mods)\n".utf8))
-    let flags = spec.mods.reduce(CGEventFlags()) { acc, m in
-        acc.union(modMap[m.lowercased()] ?? CGEventFlags())
-    }
-
-    // Dispatch off the event-tap callback thread. Use null source + flags
-    // only (Hammerspoon's recipe). Post at session tap.
     sendQueue.async {
-        let down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true)
-        down?.flags = flags
-        down?.post(tap: .cgSessionEventTap)
-        usleep(2000)
-
-        let up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false)
-        up?.flags = flags
-        up?.post(tap: .cgSessionEventTap)
+        var err: NSDictionary? = nil
+        script.executeAndReturnError(&err)
+        if let err = err {
+            FileHandle.standardError.write(Data("gesturemouse: exec error for '\(dir)': \(err)\n".utf8))
+        }
     }
 }
 
@@ -140,13 +166,17 @@ func sendKey(_ spec: ActionSpec) {
 var gestureActive = false
 var accDx: CGFloat = 0
 var accDy: CGFloat = 0
+var anchorPos: CGPoint = .zero
 
 func beginGesture() {
     gestureActive = true
     accDx = 0
     accDy = 0
-    // Decouple HID input from the visible cursor so the pointer stays put
-    // while the user drags the gesture button. Re-coupled on release.
+    anchorPos = CGEvent(source: nil)?.location ?? .zero
+    // Decouple HID input from the visible cursor. On many setups this alone
+    // is enough; on others (e.g. Logitech HID++ devices reporting absolute
+    // positions) it has no effect, so we also warp the cursor back on every
+    // move event while the gesture button is held.
     CGAssociateMouseAndMouseCursorPosition(0)
 }
 
@@ -201,6 +231,7 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
          type == .leftMouseDragged  || type == .rightMouseDragged) {
         accDx += CGFloat(event.getIntegerValueField(.mouseEventDeltaX))
         accDy += CGFloat(event.getIntegerValueField(.mouseEventDeltaY))
+        CGWarpMouseCursorPosition(anchorPos)
         return nil
     }
 
@@ -216,7 +247,7 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
             let dx = accDx, dy = accDy
             endGesture()
             let dir = classify(dx: dx, dy: dy)
-            if let action = config.actions[dir] { sendKey(action) }
+            if config.actions[dir] != nil { sendAction(dir: dir) }
             return nil
         }
     }
@@ -237,6 +268,7 @@ func ensureAccessibility() {
 }
 
 ensureAccessibility()
+compileScripts()
 
 // MARK: - Bootstrap
 

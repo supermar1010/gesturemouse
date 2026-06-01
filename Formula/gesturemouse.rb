@@ -15,6 +15,7 @@ class Gesturemouse < Formula
            "-framework", "CoreGraphics",
            "-framework", "Carbon",
            "-framework", "ApplicationServices",
+           "-framework", "AppKit",
            "-o", "gesturemouse"
     bin.install "gesturemouse"
     (share/"gesturemouse").install "config.example.json"

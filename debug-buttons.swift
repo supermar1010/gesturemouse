@@ -41,6 +41,27 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
         return Unmanaged.passUnretained(event)
     }
 
+    if type == .keyDown || type == .keyUp || type == .flagsChanged {
+        let kc = event.getIntegerValueField(.keyboardEventKeycode)
+        let autorepeat = event.getIntegerValueField(.keyboardEventAutorepeat)
+        let raw = event.flags.rawValue
+        let f = event.flags
+        var mods: [String] = []
+        if f.contains(.maskCommand)   { mods.append("cmd")   }
+        if f.contains(.maskShift)     { mods.append("shift") }
+        if f.contains(.maskControl)   { mods.append("ctrl")  }
+        if f.contains(.maskAlternate) { mods.append("alt")   }
+        let kind: String
+        switch type {
+        case .keyDown:      kind = "keyDown"
+        case .keyUp:        kind = "keyUp"
+        case .flagsChanged: kind = "flagsChanged"
+        default:            kind = "?"
+        }
+        print("\(kind)  keycode=\(kc)  flags=\(mods.joined(separator: "+"))  raw=0x\(String(raw, radix: 16))  autorepeat=\(autorepeat)")
+        return Unmanaged.passUnretained(event)
+    }
+
     let btn = event.getIntegerValueField(.mouseEventButtonNumber)
     let pos = event.location
     let kind: String
@@ -64,14 +85,16 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
     return Unmanaged.passUnretained(event)
 }
 
-let mask: CGEventMask =
-    (1 << CGEventType.leftMouseDown.rawValue)  |
-    (1 << CGEventType.leftMouseUp.rawValue)    |
-    (1 << CGEventType.rightMouseDown.rawValue) |
-    (1 << CGEventType.rightMouseUp.rawValue)   |
-    (1 << CGEventType.otherMouseDown.rawValue) |
-    (1 << CGEventType.otherMouseUp.rawValue)   |
-    (1 << CGEventType.scrollWheel.rawValue)
+let interesting: [CGEventType] = [
+    .leftMouseDown, .leftMouseUp,
+    .rightMouseDown, .rightMouseUp,
+    .otherMouseDown, .otherMouseUp,
+    .scrollWheel,
+    .keyDown, .keyUp, .flagsChanged,
+]
+let mask: CGEventMask = interesting.reduce(CGEventMask(0)) { acc, t in
+    acc | (CGEventMask(1) << CGEventMask(t.rawValue))
+}
 
 guard let tap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
