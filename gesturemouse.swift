@@ -12,7 +12,8 @@ struct ActionSpec: Decodable {
 }
 
 struct ScrollInvertConfig: Decodable {
-    let verticalMouseOnly: Bool
+    let verticalMouseOnly: Bool?
+    let horizontalMouseOnly: Bool?
 }
 
 struct Config: Decodable {
@@ -34,7 +35,8 @@ let defaultConfigJSON = """
     "down":  { "key": "down",  "mods": ["ctrl"] }
   },
   "scrollInvert": {
-    "verticalMouseOnly": true
+    "verticalMouseOnly": true,
+    "horizontalMouseOnly": false
   }
 }
 """
@@ -206,18 +208,31 @@ let callback: CGEventTapCallBack = { _, type, event, _ in
     }
 
     if type == .scrollWheel {
-        guard let invert = config.scrollInvert, invert.verticalMouseOnly else {
+        guard let invert = config.scrollInvert else {
             return Unmanaged.passUnretained(event)
         }
+        let invV = invert.verticalMouseOnly ?? false
+        let invH = invert.horizontalMouseOnly ?? false
+        if !invV && !invH { return Unmanaged.passUnretained(event) }
         let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous)
         if isContinuous != 0 { return Unmanaged.passUnretained(event) }  // trackpad
 
-        let d1  = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
-        let pd1 = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
-        let fp1 = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
-        event.setIntegerValueField(.scrollWheelEventDeltaAxis1,      value: -d1)
-        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: -pd1)
-        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: -fp1)
+        if invV {
+            let d1  = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
+            let pd1 = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+            let fp1 = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis1,      value: -d1)
+            event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: -pd1)
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: -fp1)
+        }
+        if invH {
+            let d2  = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
+            let pd2 = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2)
+            let fp2 = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis2,      value: -d2)
+            event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: -pd2)
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: -fp2)
+        }
         return Unmanaged.passUnretained(event)
     }
 

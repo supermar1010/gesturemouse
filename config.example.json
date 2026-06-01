@@ -9,6 +9,7 @@
     "down":  { "key": "down",  "mods": ["ctrl"] }
   },
   "scrollInvert": {
-    "verticalMouseOnly": true
+    "verticalMouseOnly": true,
+    "horizontalMouseOnly": false
   }
 }

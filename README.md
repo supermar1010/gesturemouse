@@ -77,7 +77,8 @@ If you also run Mac Mouse Fix or Logi Options+, remove their binding for
     "down":  { "key": "down",  "mods": ["ctrl"] }
   },
   "scrollInvert": {
-    "verticalMouseOnly": true
+    "verticalMouseOnly": true,
+    "horizontalMouseOnly": false
   }
 }
 ```
@@ -87,7 +88,8 @@ If you also run Mac Mouse Fix or Logi Options+, remove their binding for
 | `button`                       | 0-indexed mouse button. MX Master 3S thumb gesture = `5` |
 | `moveThreshold`                | px of movement before a press counts as a gesture       |
 | `actions.{click,left,right,up,down}` | Keystroke to fire per direction                   |
-| `scrollInvert.verticalMouseOnly` | Flip mouse scroll vertical; trackpad unaffected       |
+| `scrollInvert.verticalMouseOnly`   | Flip mouse vertical scroll; trackpad unaffected      |
+| `scrollInvert.horizontalMouseOnly` | Flip mouse tilt-wheel scroll; trackpad unaffected    |
 
 Supported `key` values: `left`, `right`, `up`, `down`, `space`, `return`,
 `tab`, `esc`, `delete`, `0`–`9`, `f1`–`f12`.
